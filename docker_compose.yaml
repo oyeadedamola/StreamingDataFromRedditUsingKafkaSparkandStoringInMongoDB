@@ -1,0 +1,90 @@
+version: '3.8'
+services:
+
+  # Zookeeper Service for Confluent Kafka
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_LISTENER_PORT: 2181
+    networks:
+      - app_network
+    ports:
+      - "2181:2181"
+
+  # Confluent Kafka Service (Broker)
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+
+    networks:
+      - app_network
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+
+
+  # Spark Master Service (Bitnami Spark)
+  spark-master:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=master
+    networks:
+      - app_network
+    ports:
+      - "7077:7077"
+      - "8080:8080"  # Spark UI for monitoring
+
+  # Spark Worker Service
+  spark-worker:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    networks:
+      - app_network
+    depends_on:
+      - spark-master
+
+  # Python Reddit Kafka Producer
+  reddit-kafka-producer:
+    build: ./reddit_kafka_producer
+    environment:
+      - REDDIT_CLIENT_ID="1ta5UrhDc1qcfWWK5iQ87w"
+      - REDDIT_CLIENT_SECRET="1N8NGa0RRKBZhH_fZE8gc6FS738lcA"
+      - REDDIT_USER_AGENT=reddit-producer
+      - KAFKA_BROKER=kafka:9092  # Confluent Kafka Broker address
+    networks:
+      - app_network
+    depends_on:
+      - kafka
+    volumes:
+      - ./reddit_kafka_producer:/usr/src/app
+    command: ["python", "producer.py"]
+
+  # Spark Consumer (To consume data from Kafka and store it in Mongo Atlas)
+  spark-consumer:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - KAFKA_BROKER=kafka:9092  # Confluent Kafka Broker address
+      - MONGO_ATLAS_URI=mongodb+srv://oyetayoadedamola:SWJ4WdexcEbKU8vy@project2.3l5op.mongodb.net/?retryWrites=true&w=majority&appName=Project2
+    networks:
+      - app_network
+    depends_on:
+      - kafka
+      - spark-master
+    volumes:
+      - ./spark_consumer:/usr/src/app
+    command: ["spark-submit", "--master", "spark://spark-master:7077", "/usr/src/app/consumer.py"]
+networks:
+  app_network:
+    driver: bridge
