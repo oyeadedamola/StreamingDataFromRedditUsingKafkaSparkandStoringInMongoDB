@@ -2,10 +2,8 @@ from pyspark.sql import SparkSession
 import os
 from dotenv import load_dotenv
 
-def configure():
-    load_dotenv()
-    
-configure()
+
+load_dotenv()
 
 # Load MongoDB URI from environment variables
 uri = os.getenv('uri')
@@ -22,6 +20,9 @@ spark = SparkSession.builder \
     .config("spark.mongodb.output.collection", os.getenv('collection')) \
     .config("spark.jars.packages", 
             "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.1,org.mongodb.spark:mongo-spark-connector_2.12:3.0.0") \
+    .config("spark.executor.memory", "4g") \
+    .config("spark.driver.memory", "2g") \
+    .config("spark.network.timeout", "600s") \
     .getOrCreate()  # Corrected method name
 
 # Read data from Kafka topic 'reddit'
